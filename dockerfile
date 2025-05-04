@@ -10,6 +10,9 @@ COPY go.mod go.sum ./
 
 RUN go mod download
 
+# Install the C toolchain (gcc, musl-dev, etc.)
+RUN apk add --no-cache build-base
+
 # Copy source code
 COPY . .
 
