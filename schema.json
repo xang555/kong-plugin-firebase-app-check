@@ -1,0 +1,8 @@
+{
+    "name": "firebase-app-check",
+    "fields": {
+      "project_id":               { "type": "string", "required": true },
+      "service_account_key_file": { "type": "string", "required": false },
+      "cache_ttl":                { "type": "integer", "required": false, "default": 0 }
+    }
+  }
