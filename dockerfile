@@ -1,40 +1,33 @@
-# Stage 1: Build the Go plugin as a .so
+# Stage 1: Compile the Go plugin
 FROM golang:1.21-alpine AS builder
-
 ENV CGO_ENABLED=1
-
 WORKDIR /plugin
 
-# Copy module definition and download deps
 COPY go.mod go.sum ./
-
 RUN go mod download
-
-# Install the C toolchain (gcc, musl-dev, etc.)
 RUN apk add --no-cache build-base
 
-# Copy source code
 COPY . .
-
-# Build the plugin
 RUN go build -buildmode=plugin -o firebase_app_check.so .
 
-# Stage 2: Create the Kong image with plugin
+# Stage 2: Build final Kong image with plugin
 FROM kong/kong-gateway:3.4.3.18
 
-# Copy the compiled plugin into Kong's plugin folder
 USER root
+
+# Create plugin directory and copy compiled .so
 RUN mkdir -p /usr/local/lib/lua/5.1/kong/plugins/app-check
 COPY --from=builder /plugin/firebase_app_check.so \
      /usr/local/lib/lua/5.1/kong/plugins/app-check/handler.so
 
-# Enable the plugin in Kong
+# Restore Kong's entrypoint script from the base image
+COPY --from=kong/kong-gateway:3.4.3.18 /docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Enable your plugin alongside Kong’s bundled plugins
 ENV KONG_PLUGINS=bundled,app-check
 
-# reset back the defaults
+# Switch back to the non-root user and let the base image launch logic run
 USER kong
-ENTRYPOINT ["/docker-entrypoint.sh"]
-EXPOSE 8000 8443 8001 8444
-STOPSIGNAL SIGQUIT
-HEALTHCHECK --interval=10s --timeout=10s --retries=10 CMD kong health
-CMD ["kong", "docker-start"]
+
+# (No need to re-specify ENTRYPOINT or CMD; they’re inherited from the base image)
