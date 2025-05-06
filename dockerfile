@@ -6,8 +6,11 @@ ENV CGO_ENABLED=0 \
     GOARCH=amd64
 
 WORKDIR /plugin
+
+# grab dependencies
 COPY go.mod go.sum ./
-RUN apk add --no-cache git \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
  && go mod download
 
 COPY . .
