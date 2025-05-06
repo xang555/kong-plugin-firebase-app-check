@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -54,6 +56,7 @@ func (conf *Config) Access(kong *pdk.PDK) {
 	})
 
 	if initErr != nil {
+		kong.Log.Err("Firebase AppCheck initialization failed: ", initErr.Error())
 		kong.Response.Exit(500, []byte("Internal Server Error"), nil)
 		return
 	}
@@ -72,6 +75,7 @@ func (conf *Config) Access(kong *pdk.PDK) {
 
 	_, err := verifier.VerifyToken(token)
 	if err != nil {
+		kong.Log.Err("Token verification failed: ", err.Error())
 		kong.Response.Exit(401, []byte("Unauthorized: invalid App Check token"), nil)
 		return
 	}
@@ -86,5 +90,11 @@ func main() {
 		Version  = "0.1.0"
 		Priority = 1
 	)
-	server.StartServer(New, Version, Priority)
+
+	// Added error handling for server start
+	err := server.StartServer(New, Version, Priority)
+	if err != nil {
+		log.Printf("Failed to start plugin server: %v", err)
+		os.Exit(1)
+	}
 }

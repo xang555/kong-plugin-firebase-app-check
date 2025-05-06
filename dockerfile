@@ -1,33 +1,52 @@
-# Stage 1: Compile the Go plugin
-FROM golang:1.21-alpine AS builder
-ENV CGO_ENABLED=1
+# ─── Stage 1: Build a fully static Go plugin ───────────────────────
+FROM golang:1.21 AS builder
+
+# disable cgo so we get a pure-Go, statically linked binary
+ENV CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64
+
 WORKDIR /plugin
 
+# grab dependencies
 COPY go.mod go.sum ./
-RUN go mod download
-RUN apk add --no-cache build-base
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && go mod download
 
+# compile your plugin; name output exactly to your slug
 COPY . .
-RUN go build -buildmode=plugin -o firebase_app_check.so .
+RUN go build -o firebase-app-check .
 
-# Stage 2: Build final Kong image with plugin
-FROM kong/kong-gateway:3.4.3.18
+
+
+# ─── Stage 2: Runtime on Kong:Alpine ───────────────────────────────
+FROM kong:3.9.0
 
 USER root
 
-# Create plugin directory and copy compiled .so
-RUN mkdir -p /usr/local/lib/lua/5.1/kong/plugins/app-check
-COPY --from=builder /plugin/firebase_app_check.so \
-     /usr/local/lib/lua/5.1/kong/plugins/app-check/handler.so
+# install root CAs in case your plugin does any HTTPS
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-# Restore Kong's entrypoint script from the base image
-COPY --from=kong/kong-gateway:3.4.3.18 /docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+# copy in your static binary
+COPY --from=builder /plugin/firebase-app-check /usr/local/bin/firebase-app-check
+RUN chmod +x /usr/local/bin/firebase-app-check
 
-# Enable your plugin alongside Kong’s bundled plugins
-ENV KONG_PLUGINS=bundled,app-check
+# Correct the query command to use -dump without additional quotes
+ENV KONG_GO_PLUGINS_DIR=/usr/local/bin \
+    KONG_PLUGINS=bundled,firebase-app-check \
+    KONG_PLUGINSERVER_NAMES=firebase-app-check \
+    KONG_PLUGINSERVER_FIREBASE_APP_CHECK_START_CMD=/usr/local/bin/firebase-app-check \
+    KONG_PLUGINSERVER_FIREBASE_APP_CHECK_QUERY_CMD="/usr/local/bin/firebase-app-check -dump"
 
-# Switch back to the non-root user and let the base image launch logic run
+# drop back to the kong user
 USER kong
 
-# (No need to re-specify ENTRYPOINT or CMD; they’re inherited from the base image)
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["kong", "docker-start"]
+
+EXPOSE 8000 8443 8001 8444
+STOPSIGNAL SIGQUIT
+HEALTHCHECK --interval=10s --timeout=10s --retries=10 CMD kong health
