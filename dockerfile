@@ -34,6 +34,10 @@ RUN apt-get update \
 COPY --from=builder /plugin/firebase-app-check /usr/local/bin/firebase-app-check
 RUN chmod +x /usr/local/bin/firebase-app-check
 
+# make the socket dir writable by kong
+RUN mkdir -p /usr/local/kong \
+ && chown kong: /usr/local/kong
+
 # Correct the query command to use -dump without additional quotes
 ENV KONG_GO_PLUGINS_DIR=/usr/local/bin \
     KONG_PLUGINS=bundled,firebase-app-check \
