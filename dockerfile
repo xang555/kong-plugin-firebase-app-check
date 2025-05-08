@@ -1,16 +1,14 @@
-# ─── Stage 1: Build a pure-Go, static pluginserver ───────────────────
-FROM golang:1.21 AS builder
+# ─── Stage 1: Build a fully static Go plugin ───────────────────────
+FROM golang:1.21-alpine AS builder
 
+# produce a self-contained, static binary
 ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64
 
 WORKDIR /plugin
-
-# grab dependencies
 COPY go.mod go.sum ./
-RUN apt-get update \
- && apt-get install -y --no-install-recommends git \
+RUN apk add --no-cache git \
  && go mod download
 
 COPY . .
@@ -18,38 +16,38 @@ RUN go build -o firebase-app-check .
 
 
 
-# ─── Stage 2: Kong runtime (Alpine variant) ─────────────────────────
-FROM kong:3.9.0
+# ─── Stage 2: Runtime on Kong (Debian) ────────────────────────────
+FROM kong:3.4.2
 
 USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-# copy & mark your binary
+# copy & mark your pluginserver
 COPY --from=builder /plugin/firebase-app-check /usr/local/bin/firebase-app-check
-RUN chmod +x /usr/local/bin/firebase-app-check
-
-# make sure Kong’s prefix & socket dir exist and are owned by `kong`
-RUN mkdir -p /usr/local/kong \
+RUN chmod +x /usr/local/bin/firebase-app-check \
+ && mkdir -p /usr/local/kong \
  && chown -R kong: /usr/local/kong
 
-# explicitly tell Kong what its prefix is (where to write nginx.conf, .socket, etc.)
-ENV KONG_PREFIX=/usr/local/kong
-
-# 1) where to find Go plugin binaries
+# ─── Tell Kong exactly how to load your Go plugin ────────────────
+# (1) where to find your binary
 ENV KONG_GO_PLUGINS_DIR=/usr/local/bin
 
-# 2) enable built-ins + yours
+# (2) enable both the built-ins and your new plugin
 ENV KONG_PLUGINS=bundled,firebase-app-check
 
-# 3) register an external server named exactly "firebase-app-check"
+# (3) register an external pluginserver named exactly "firebase-app-check"
 ENV KONG_PLUGINSERVER_NAMES=firebase-app-check
 
-# 4) how Kong “starts” that server (no args—it must block and listen)
+# (4) how Kong "starts" that server (it will call this with no args,
+#     and the Go PDK's StartServer must block and listen)
 ENV KONG_PLUGINSERVER_FIREBASE_APP_CHECK_START_CMD=/usr/local/bin/firebase-app-check
 
-# 5) how Kong “queries” that server for schema (must match your dump test)
+# (5) how Kong "queries" that server for its schema (it must print JSON and exit 0)
 ENV KONG_PLUGINSERVER_FIREBASE_APP_CHECK_QUERY_CMD=/usr/local/bin/firebase-app-check\ -dump
 
-# back to unprivileged user
+# switch back to the unprivileged user
 USER kong
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
