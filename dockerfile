@@ -43,6 +43,7 @@ ENV KONG_PLUGINSERVER_NAMES=firebase-app-check
 # (4) how Kong "starts" that server (it will call this with no args,
 #     and the Go PDK's StartServer must block and listen)
 ENV KONG_PLUGINSERVER_FIREBASE_APP_CHECK_START_CMD=/usr/local/bin/firebase-app-check
+ENV KONG_PLUGINSERVER_FIREBASE_APP_CHECK_SOCKET=/usr/local/kong/firebase-app-check.socket
 
 # (5) how Kong "queries" that server for its schema (it must print JSON and exit 0)
 ENV KONG_PLUGINSERVER_FIREBASE_APP_CHECK_QUERY_CMD=/usr/local/bin/firebase-app-check\ -dump
