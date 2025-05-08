@@ -1,15 +1,15 @@
 # ─── Stage 1: Build the Go Plugin ─────────────────────────────────────
 FROM golang:1.21-alpine AS builder
 
-# Set environment variables for static build
-ENV CGO_ENABLED=0 \
+# Install build tools
+RUN apk add --no-cache build-base git
+
+# Set environment variables for CGO
+ENV CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=amd64
 
 WORKDIR /plugin
-
-# Install git and download dependencies
-RUN apk add --no-cache git
 
 # Copy go.mod and go.sum files
 COPY go.mod go.sum ./
